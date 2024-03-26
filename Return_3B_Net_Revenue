@@ -1,0 +1,458 @@
+CREATE    Procedure uspR3B_Revenue_Derived1                                              
+as                                              
+begin                                              
+                                              
+----------Return_3B_Dealer_Filing_Pattern                                              
+                                              
+execute uspUpdate_Return_3B_Dealer_Filing_Pattern                                              
+                                              
+                                              
+--------------------------------------------RETURN_3B_SUMMARY                                              
+                                    
+                                            
+if object_id('RETURN_3B_SUMMARY') is not NULL                                              
+Truncate Table RETURN_3B_SUMMARY                                              
+                                              
+                                              
+insert into RETURN_3B_SUMMARY                                              
+select  GSTIN                                              
+,sum(nullif(IGST_SETOFF_CASH,0)) IGST_SETOFF_CASH                                              
+,sum(nullif(CGST_SETOFF_CASH,0)) CGST_SETOFF_CASH                                              
+,sum(nullif(SGST_SETOFF_CASH,0)) SGST_SETOFF_CASH                                              
+,sum(nullif(CESS_SETOFF_CASH,0)) CESS_SETOFF_CASH                                              
+,sum(nullif(IGST_SETOFF,0)) IGST_SETOFF                                              
+,sum(nullif(CGST_SETOFF,0)) CGST_SETOFF                                              
+,sum(nullif(SGST_SETOFF,0)) SGST_SETOFF                                              
+,sum(nullif(CESS_SETOFF,0))CESS_SETOFF                                              
+,sum(nullif(TOTAL_CASH_SETOFF,0)) TOTAL_CASH_SETOFF                                              
+,sum(nullif(TOTAL_ITC_SETOFF,0)) TOTAL_ITC_SETOFF                                              
+,sum(nullif(TOTAL_ITC_LIABILITY,0)) TOTAL_ITC_LIABILITY                                              
+,sum(nullif(TOTAL_CASH_SETOFF,0))*100.0/nullif(sum(isnull(TOTAL_CASH_SETOFF,0))+sum(isnull(TOTAL_ITC_SETOFF,0)),0) CASH_SETOFF_PERCENT                                              
+,sum(nullif(TURNOVER,0)) TURNOVER                                              
+,sum(nullif(IGST_SETTLEMENT,0)) IGST_SETTLEMENT                                              
+,FINANCIAL_YEAR                                      
+,sum(nullif(IGST_ITC_REVERSAL,0))IGST_ITC_REVERSAL                                             
+from Return_3B_Monthly_Summary                                              
+group by GSTIN, FINANCIAL_YEAR                                               
+-----------------------------------------Return_3B_net_revenue----                                              
+--if object_id('Return_3B_Net_Revenue') is not NULL                                              
+--Truncate Table Return_3B_Net_Revenue                                              
+                                                                      
+execute uspReturn_3B_Net_Revenue_NEW_AUTO_1                                             
+                                              
+                                                                        
+;With cte as                                                                         
+(                                                                        
+Select YEAR , Month_No ,Sum(NET_REVENUE) as  YEAR_WISE_NET_REVENUE                                                                        
+FROM RETURN_3B_NET_REVENUE                                                                      
+GROUP BY  YEAR , MONTH_NO                                                                        
+)                                                                        
+, RESULT AS                 
+(                                                                        
+SELECT GSTIN, YEAR, Month_No , Sum(NET_REVENUE)  AS GSTIN_WISE_NET_REVENUE                             
+FROM  RETURN_3B_NET_REVENUE                 
+GROUP BY GSTIN, YEAR, Month_No                               
+)                                                                        
+, final as                                                                         
+(                             
+SELECT   R.GSTIN ,R.YEAR, R.Month_No,                                                                        
+ ( GSTIN_WISE_NET_REVENUE)*100.0  / NULLIF(YEAR_WISE_NET_REVENUE ,0) AS  NET_REVENUE_PERCENT                                      
+FROM CTE C                                                                                  
+JOIN RESULT R                                                           
+ON C.YEAR= R.YEAR AND C.Month_No= R.Month_No                                
+)                                               
+, update_result as                                              
+(                                             
+select  GSTIN ,YEAR, Month_No,NET_REVENUE_PERCENT                                 
+from final                                                                         
+   )                                                                           
+update RETURN_3B_NET_REVENUE                                                                 
+set RETURN_3B_NET_REVENUE.NET_REVENUE_PERCENT=a.NET_REVENUE_PERCENT                                                                      
+from update_result a                                                           
+where  RETURN_3B_NET_REVENUE.gstin=a.gstin and RETURN_3B_NET_REVENUE.Month_no=a.Month_No                                          
+and RETURN_3B_NET_REVENUE.Year=a.year                                                 
+                                             
+------------------------------------------Return_3B_Net_revenue_Summary                                          
+                                   
+                                    
+                                        
+if object_id('RETURN_3B_NET_REVENUE_SUMMARY') is not NULL                                              
+Truncate Table RETURN_3B_NET_REVENUE_SUMMARY                                          
+                                              
+insert into [RETURN_3B_NET_REVENUE_SUMMARY]                                              
+select GSTIN,                                               
+SUM(nullif(SGST_CASH,0)) SGST_CASH,                                               
+SUM(nullif(SGST_SETTLEMENT,0)) SGST_SETTLEMENT,                                              
+SUM(nullif(NET_REVENUE,0)) NET_REVENUE,                                               
+0.0 NET_REVENUE_PERCENT,                                               
+0.0 NET_REVENUE_PERCENT_CIRCLE,                                              
+FINANCIAL_YEAR,                                              
+sum(nullif(REFUND_AMOUNT,0)) REFUND_AMOUNT ,                                         
+sum(nullif(IGST_ITC_REVERSAL,0)) IGST_ITC_REVERSAL                                        
+from dbo.RETURN_3B_NET_REVENUE                                              
+group by GSTIN, FINANCIAL_YEAR                                          
+                                   
+                                              
+---------------------  NET REVENUE UPDATE -----------------------------                                              
+                                              
+;With cte as                                                     
+(                                                      
+select FINANCIAL_YEAR, sum(NET_REVENUE) as Total_Financial                                              
+from RETURN_3B_NET_REVENUE_SUMMARY                                                    
+GROUP BY  FINANCIAL_YEAR                                                    
+)          
+, RESULT AS                                                       
+(                                                      
+SELECT GSTIN, FINANCIAL_YEAR, Sum(NET_REVENUE)  AS GSTIN_WISE_NET_REVENUE                                             
+FROM  RETURN_3B_NET_REVENUE_SUMMARY                                                  
+GROUP BY GSTIN, FINANCIAL_YEAR                                       
+)                                                      
+  , final as                                              
+  (                          
+SELECT   R.GSTIN , C.FINANCIAL_YEAR,                                                      
+ ( GSTIN_WISE_NET_REVENUE / NULLIF(Total_Financial ,0))*100   AS  NET_REVENUE_PERCENT                                                      
+FROM CTE C                                                      
+JOIN RESULT R                                                      
+ON C. FINANCIAL_YEAR= R. FINANCIAL_YEAR                                                
+   )                                                 
+,update_result as                                              
+(                                              
+select GSTIN ,FINANCIAL_YEAR,NET_REVENUE_PERCENT                                                      
+                                                   
+from final                                                 
+)                                              
+update RETURN_3B_NET_REVENUE_SUMMARY                                          
+set RETURN_3B_NET_REVENUE_SUMMARY.NET_REVENUE_PERCENT=a.NET_REVENUE_PERCENT                                                      
+from update_result a                                                      
+where  RETURN_3B_NET_REVENUE_SUMMARY.gstin=a.gstin and RETURN_3B_NET_REVENUE_SUMMARY.FINANCIAL_YEAR  =a.FINANCIAL_YEAR                                                   
+                                              
+                                              
+                                              
+-----------------------NET_REVENUE_PERCENT_CIRCLE-------------------------------------------------------                                              
+                                              
+                                              
+                                                
+;WITH Circle_Wise_REVENUE_FINANCIAL_YEAR as                                               
+     (                                              
+    select T2.CIRCLE, T2.FINANCIAL_YEAR ,T2.Circle_NET_REVENUE_Financial_Year                                       
+    from                                               
+    (select CIRCLE, A.FINANCIAL_YEAR ,                                               
+    SUM(NET_REVENUE) Circle_NET_REVENUE_Financial_Year                                               
+    from dbo.RETURN_3B_NET_REVENUE_SUMMARY A, dbo.DEALER_MASTER B                                               
+    where A.GSTIN = B.GSTIN group by CIRCLE, A.FINANCIAL_YEAR )  T2                                              
+      )                                              
+, GSTIN_NET_REVENUE_FY as                                              
+    (                                              
+ select T2.FINANCIAL_YEAR ,T2.CIRCLE, T2.GSTIN ,T2.GSTIN_Circle_NET_Financial_Year                                              
+    from                                             
+    (select CIRCLE,FINANCIAL_YEAR, A.GSTIN ,                                               
+    SUM(NET_REVENUE) GSTIN_Circle_NET_Financial_Year                                              
+    from dbo.RETURN_3B_NET_REVENUE_SUMMARY A, dbo.DEALER_MASTER B                                               
+    where A.GSTIN = B.GSTIN group by FINANCIAL_YEAR,CIRCLE, A.GSTIN ) T2                                              
+        )                                              
+, FINAL AS                                              
+    (                                              
+    Select G.GSTIN, G.CIRCLE , G.FINANCIAL_YEAR, Circle_NET_REVENUE_Financial_Year,GSTIN_Circle_NET_Financial_Year,                                              
+    (GSTIN_Circle_NET_Financial_Year/Circle_NET_REVENUE_Financial_Year)*100.0 as NET_REVENUE_PERCENT_CIRCLE                                              
+    from Circle_Wise_REVENUE_FINANCIAL_YEAR C, GSTIN_NET_REVENUE_FY  G                                              
+    where C.CIRCLE=G.CIRCLE and C.FINANCIAL_YEAR=G.FINANCIAL_YEAR                                                
+    )                                              
+    , update_result as                                           
+    (                                              
+select  GSTIN ,CIRCLE, FINANCIAL_YEAR,NET_REVENUE_PERCENT_CIRCLE                                                     
+      from final              
+   )                                              
+update RETURN_3B_NET_REVENUE_SUMMARY                                                    
+set RETURN_3B_NET_REVENUE_SUMMARY.NET_REVENUE_PERCENT_CIRCLE=a.NET_REVENUE_PERCENT_CIRCLE            
+from update_result a                                                      
+where  RETURN_3B_NET_REVENUE_SUMMARY.gstin=a.gstin and RETURN_3B_NET_REVENUE_SUMMARY.FINANCIAL_YEAR  =a.FINANCIAL_YEAR                                                 
+                                              
+                                       
+----------------------------------RETURN_3B_NET_REVENUE_YEARLY_SUMMARY                                        
+                                    
+                                        
+if object_id('RETURN_3B_NET_REVENUE_YEARLY_SUMMARY') is not NULL                                              
+Truncate Table RETURN_3B_NET_REVENUE_YEARLY_SUMMARY                        
+                                              
+                                              
+insert into RETURN_3B_NET_REVENUE_YEARLY_SUMMARY                                              
+select GSTIN                                              
+,FINANCIAL_YEAR                                              
+,sum(nullif(sgst_cash,0))sgst_cash                                              
+,sum(nullif(SGST_SETTLEMENT,0)) SGST_SETTLEMENT                                              
+,sum(nullif(REFUND_AMOUNT,0)) REFUND_AMOUNT                                              
+,sum(nullif(NET_REVENUE,0)) NET_REVENUE                                         
+,sum(nullif(IGST_ITC_REVERSAL,0)) IGST_ITC_REVERSAL                                         
+from RETURN_3B_NET_REVENUE                                              
+group by GSTIN,FINANCIAL_YEAR                                        
+                                    
+                                 
+                                              
+----------------------------                                              
+                                              
+if object_id('RETURN_3B_LIABILITY_SETOFF_YEAR_ON_YEAR') is not NULL                                              
+Truncate Table RETURN_3B_LIABILITY_SETOFF_YEAR_ON_YEAR                                              
+                                     
+execute uspRETURN_3B_LIABILITY_SETOFF_YEAR_ON_YEAR_AUTO                                              
+                                              
+-------------------------------                                              
+                                              
+--if object_id('ZONE_DIVISION_CIRCLE_WISE_MONTHLY_IGST_ITC_REVERSAL') is not NULL                                              
+--Truncate Table ZONE_DIVISION_CIRCLE_WISE_MONTHLY_IGST_ITC_REVERSAL                                              
+                                              
+execute uspIGST_ITC_REVERSAL_1                                              
+                                              
+                                              
+----------------------------                                              
+if object_id('RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE') is not NULL                                                                                    
+Truncate Table RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                              
+                                              
+                                              
+insert into RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                              
+select B.ZONE,                             
+B.DIVISION,                                              
+B.CIRCLE,                                              
+A.MONTH_NO,                                              
+A.YEAR,                                              
+SUM(isnull(SGST_CASH,0)) SGST_CASH,                                              
+SUM(isnull(SGST_SETTLEMENT,0)) SGST_SETTLEMENT,                                        
+0.0 REFUND_AMOUNT,                                              
+SUM(isnull(NET_REVENUE,0)) NET_REVENUE,                                              
+0.00 NET_REVENUE_PERCENT,                                              
+0.0 REVENUE_FROM_URP ,                                        
+0.00 ADHOC_REVENUE,                            
+A.FINANCIAL_YEAR,                                              
+A.FINANCIAL_MONTH,                                              
+0.0 TOTAL_ITC_SETOFF,                                              
+0.0 TOTAL_CASH_SETOFF,                                        
+sum(isnull(IGST_ITC_REVERSAL,0))   IGST_ELIGIBLE_ITC  ,  
+NULL INDEX_NUMBER                                    
+from dbo.RETURN_3B_NET_REVENUE A, dbo.DEALER_MASTER B                                              
+where A.GSTIN = B.GSTIN and B.ZONE is not null and B.DIVISION is not null and B.CIRCLE is not null                                              
+group by B.ZONE, B.DIVISION, B.CIRCLE, A.MONTH_NO, A.YEAR, A.FINANCIAL_YEAR, A.FINANCIAL_MONTH                                              
+order by B.ZONE, B.DIVISION, B.CIRCLE;     
+  
+  
+  
+update GST_IMPL_NEW_TEST..RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE  
+set INDEX_NUMBER = a.INDEX_NUMBER  
+from GST_IMPL_NEW_TEST.[dbo].[DIM_PERIOD_FY] a  
+where GST_IMPL_NEW_TEST..RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.FINANCIAL_MONTH   = a.FINANCIAL_MONTH_NO      
+and GST_IMPL_NEW_TEST..RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.FINANCIAL_YEAR = a.FINANCIAL_YEAR  
+and GST_IMPL_NEW_TEST..RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.INDEX_NUMBER is null                                           
+                                                     
+                  
+;WITH RESULT AS              
+(              
+SELECT B.[FINANCIAL_YEAR] ,              
+A.FINANCIAL_MONTH ,              
+[CIRCLE],              
+A.CATEGORY ,              
+ A.AMOUNT                
+, ROUND(B.[REVENUE_PERCENTAGE],2) [REVENUE_PERCENTAGE]              
+,LAG(ROUND(B.[REVENUE_PERCENTAGE] ,2),12,0 ) OVER(PARTITION BY [CIRCLE] ORDER BY B.[FINANCIAL_YEAR] ,A.FINANCIAL_MONTH ) PREVIOUS_REV_PRECTAGE              
+,((A.AMOUNT) * LAG(ROUND(B.[REVENUE_PERCENTAGE] ,2) , 12, NULL ) OVER(PARTITION BY [CIRCLE] ORDER BY B.[FINANCIAL_YEAR] ) ) /100.0 REV_CONTRIBUTION              
+FROM [DBO].[REVENUE_URP_AD_HOC] A              
+JOIN [DBO].[CIRCLE_REVENUE_CONTRIBUTION] B              
+ON A.FINANCIAL_YEAR = B.FINANCIAL_YEAR              
+WHERE A.CATEGORY = 'URP'              
+)              
+, FINAL AS              
+(              
+select R.*  ,              
+CASE WHEN PREVIOUS_REV_PRECTAGE = 0 THEN (AMOUNT/ 82 )              
+ELSE NULL END REV_CONTRIBUTION_NULL              
+from RESULT R              
+)              
+,RES_FINAL AS              
+(              
+SELECT F.* , COALESCE(REV_CONTRIBUTION_NULL,  REV_CONTRIBUTION)   REV_CONTRIBUTION_FINAL              
+FROM FINAL F              
+)              
+UPDATE RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE              
+SET REVENUE_FROM_URP=R.REV_CONTRIBUTION_FINAL*10000000              
+FROM RES_FINAL R              
+WHERE RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.CIRCLE=R.CIRCLE              
+AND RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.FINANCIAL_YEAR=R.FINANCIAL_YEAR              
+AND RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.FINANCIAL_MONTH=R.FINANCIAL_MONTH              
+              
+              
+              
+              
+              
+;WITH RESULT AS              
+(              
+SELECT B.[FINANCIAL_YEAR] ,              
+A.FINANCIAL_MONTH ,              
+[CIRCLE],              
+A.CATEGORY ,              
+ A.AMOUNT                
+, ROUND(B.[REVENUE_PERCENTAGE],2) [REVENUE_PERCENTAGE]              
+,LAG(ROUND(B.[REVENUE_PERCENTAGE] ,2),12,0 ) OVER(PARTITION BY [CIRCLE] ORDER BY B.[FINANCIAL_YEAR] ,A.FINANCIAL_MONTH ) PREVIOUS_REV_PRECTAGE              
+,((A.AMOUNT) * LAG(ROUND(B.[REVENUE_PERCENTAGE] ,2) , 12, NULL ) OVER(PARTITION BY [CIRCLE] ORDER BY B.[FINANCIAL_YEAR] ) ) /100.0 REV_CONTRIBUTION              
+FROM [DBO].[REVENUE_URP_AD_HOC] A              
+JOIN [DBO].[CIRCLE_REVENUE_CONTRIBUTION] B              
+ON A.FINANCIAL_YEAR = B.FINANCIAL_YEAR              
+WHERE A.CATEGORY = 'ADHOC'              
+)              
+, FINAL AS              
+(      
+select R.*  ,              
+CASE WHEN PREVIOUS_REV_PRECTAGE = 0 THEN (AMOUNT/ 82 )              
+ELSE NULL END REV_CONTRIBUTION_NULL              
+from RESULT R              
+)              
+,RES_FINAL AS              
+(              
+SELECT F.* , COALESCE(REV_CONTRIBUTION_NULL,  REV_CONTRIBUTION)   REV_CONTRIBUTION_FINAL              
+FROM FINAL F              
+)              
+UPDATE RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE              
+SET ADHOC_REVENUE=R.REV_CONTRIBUTION*10000000              
+FROM RES_FINAL R              
+WHERE RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.CIRCLE=R.CIRCLE              
+AND RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.FINANCIAL_YEAR=R.FINANCIAL_YEAR              
+AND RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.FINANCIAL_MONTH=R.FINANCIAL_MONTH                
+                  
+update RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                
+set REVENUE_FROM_URP=0                
+where REVENUE_FROM_URP is null                
+              
+update RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                
+set ADHOC_REVENUE=0                
+where ADHOC_REVENUE is null                
+                  
+                        
+                                            
+                                              
+select B.ZONE,                  
+B.DIVISION,                   
+B.CIRCLE,                   
+A.MONTH_NO,                   
+A.YEAR,                   
+A.FINANCIAL_MONTH,                   
+A.FINANCIAL_YEAR,                   
+SUM(REFUND_AMOUNT) REFUND_AMOUNT                                              
+into #temp                                              
+from dbo.REFUND_MONTHLY_SUMMARY A inner join dbo.DEALER_MASTER B  on  (A.GSTIN = B.GSTIN)                    
+group by B.ZONE, B.DIVISION, B.CIRCLE, A.MONTH_NO, A.YEAR, A.FINANCIAL_MONTH, A.FINANCIAL_YEAR;                                              
+                                              
+update RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                              
+set REFUND_AMOUNT = A.REFUND_AMOUNT                                              
+from #temp A                                              
+where RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Zone = A.ZONE and                                       
+RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.DIVISION = A.DIVISION and                                              
+RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.CIRCLE = A.CIRCLE and                                              
+RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.MONTH_NO = A.MONTH_NO and                                              
+RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.YEAR = A.YEAR;                                             
+                                              
+update RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                              
+set NET_REVENUE = NET_REVENUE - REFUND_AMOUNT;                                     
+              
+----------------------                                  
+                                 
+;With cte as               
+(                                                      
+select FINANCIAL_YEAR,FINANCIAL_Month,  sum(NET_REVENUE) as Total_Monthly_Net_revenue                                          
+from RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                                    
+GROUP BY  FINANCIAL_YEAR ,FINANCIAL_Month                                                   
+)                                           
+, RESULT AS                                                       
+(                                                      
+SELECT Circle, FINANCIAL_YEAR,FINANCIAL_Month, Sum(NET_REVENUE)  AS Circle_WISE_Monthly_NET_REVENUE                                                      
+FROM  RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                                  
+GROUP BY Circle, FINANCIAL_YEAR,FINANCIAL_Month                                                  
+)                                                      
+ , final as                                              
+  (              
+SELECT    Circle, C.FINANCIAL_YEAR, C.FINANCIAL_Month,                                                    
+ ( Circle_WISE_Monthly_NET_REVENUE / NULLIF(Total_Monthly_Net_revenue ,0))*100   AS  NET_REVENUE_PERCENT                                                      
+FROM CTE C                                                      
+JOIN RESULT R                                                      
+ON C. FINANCIAL_YEAR= R. FINANCIAL_YEAR  and c.financial_Month=R.Financial_Month                       
+   )                                                 
+,update_result as                                              
+(                                              
+select  Circle, FINANCIAL_YEAR, FINANCIAL_Month, NET_REVENUE_PERCENT                                                                      
+from final                                                 
+)                                              
+update RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                                   
+set RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.NET_REVENUE_PERCENT=a.NET_REVENUE_PERCENT                                                      
+from update_result a                                                      
+where  RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE. FINANCIAL_YEAR  =a.FINANCIAL_YEAR                                   
+and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.FINANCIAL_Month  =a.FINANCIAL_Month                                    
+and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Circle  =a.Circle                                  
+                                  
+----------------------                                  
+                                  
+                                              
+select a.*, b.zone, b.division, b.circle                                               
+into #list1                                              
+from Return_3B_Monthly_Summary a left join Dealer_master b                                              
+on a.gstin=b.gstin                                              
+                                              
+select Zone,                                               
+Division,                                               
+Circle,                                               
+Month_no,                                               
+Year,                                               
+Financial_Year,                                              
+sum(isnull(TOTAL_CASH_SETOFF,0))TOTAL_CASH_SETOFF,                                              
+sum(isnull(TOTAL_ITC_SETOFF,0))TOTAL_ITC_SETOFF                                               
+into #list2                                              
+from #list1                                              
+group by Zone, Division, Circle, Month_no, Year,Financial_Year                                              
+                                            
+                                          
+                                              
+update RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                              
+set TOTAL_ITC_SETOFF=a.TOTAL_ITC_SETOFF                                              
+,TOTAL_CASH_SETOFF=a.TOTAL_CASH_SETOFF                                              
+from #list2 a                                              
+where RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Zone=a.Zone                                              
+and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Division=a.Division                                              
+and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Circle=a.Circle                                              
+and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Month_no=a.Month_no                                              
+and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Year=a.Year                                              
+and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Financial_Year=a.Financial_Year                                            
+                                        
+                                        
+--update RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                              
+--set IGST_ELIGIBLE_ITC=isnull(a.IGST_ELIGIBLE_ITC,0)                                            
+--from ZONE_DIVISION_CIRCLE_WISE_MONTHLY_IGST_ITC_REVERSAL a                                              
+--where RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Zone=a.Zone                                              
+--and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Division=a.Division                                              
+--and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Circle=a.Circle                                              
+--and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Month_no=a.Month_no                                              
+--and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Year=a.Year                                              
+--and RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE.Financial_Year=a.Financial_Year                                             
+                                          
+-------------------------------------------------------                                          
+                                          
+if object_id('RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE_SUMMARY') is not NULL                                                      
+Truncate Table RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE_SUMMARY                                             
+                                          
+INSERT INTO RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE_SUMMARY                 
+select A.ZONE                                          
+, A.DIVISION                                          
+, A.CIRCLE                                           
+, A.MONTH_NO                                           
+, A.YEAR                                           
+,(SUM(SGST_CASH) + SUM(SGST_SETTLEMENT) + sum(REVENUE_FROM_URP) +sum(isnull(IGST_ELIGIBLE_ITC,0)))/ 10000000 NET_REVENUE                                           
+,FINANCIAL_YEAR                                           
+,FINANCIAL_MONTH                                          
+from RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE A                                          
+Group by  A.ZONE, A.DIVISION, A.CIRCLE , A.MONTH_NO , A.YEAR ,FINANCIAL_YEAR ,FINANCIAL_MONTH                                          
+                           
+                                          
+--------------------------------------------------------------------------------------                                          
+                                          
+                                    
+drop table #list2                                              
+drop table #list1                                              
+drop table #temp;            
+--drop table #RETURN_3B_NET_REVENUE_BY_ZONE_DIVISION_CIRCLE                                              
+                                              
+end                                               
+                                              
+--execute uspR3B_Revenue_Derived1 
